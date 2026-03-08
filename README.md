@@ -4,6 +4,18 @@ Lightweight web-based Arduino flasher for Raspberry Pi (or any Linux host). Flas
 
 **Repository:** [github.com/NikhilMehta1501/arduino-remote-flasher](https://github.com/NikhilMehta1501/arduino-remote-flasher)
 
+## Origin Story
+
+This started as a simple desk clock, an Arduino Nano, a Max7219 LED matrix, and a DS3231 RTC. I'd occasionally tinker with it, swap in some scrolling text, try something out, then flash the clock firmware back. Simple enough, except it always meant either carrying the clock to my laptop or bringing the laptop to the clock.
+
+Then I built a Raspberry Pi home server and set it up near the clock. One day it clicked that I could SSH into the Pi from anywhere, so why not flash the Arduino through it? That's how the shell scripts (flash_arduino.sh, reset_arduino.sh) were born.
+
+But even that felt a bit lazy. SSH-ing in, navigating directories, running scripts manually, I felt like it's quite a bit of work. So it clicked, I could create a self-hosted app to mange this. Every other self-hosted app on the Pi (Immich, Nextcloud) was just a browser tab away. Why not this?
+
+So I built a lightweight web app, something I could pull up on my phone, hit flash, and watch the serial output stream in real time. No SSH, no terminal, no desk required.
+
+That's this project.
+
 ## Features
 
 - **Flash built-in sketches** or **upload your own** (.ino or .zip) and flash to the connected board
