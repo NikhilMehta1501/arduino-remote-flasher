@@ -58,11 +58,14 @@ char* dow2str(uint8_t code, char* psz, uint8_t len) {
   return (psz);
 }
 
-// Time Setup: Code for reading clock time
+// Time Setup: Code for reading clock time (+5 mins display offset)
 void getTime(char* psz, bool f = true) {
   s = Clock.getSecond();
   m = Clock.getMinute();
-  h = Clock.getHour(h12, PM);  //24hr Format
+  h = Clock.getHour(h12, PM);  // 24hr Format
+  m += 5;
+  if (m >= 60) { m -= 60; h++; }
+  if (h >= 24) { h -= 24; }
   sprintf(psz, "%02d%c%02d", h, (f ? ':' : ' '), m);
   //12hr Format
   //uncomment if you want the clock to be in 12hr Format
@@ -157,6 +160,7 @@ void loop(void) {
         if (checkSpecialDate(Clock.getDate(), Clock.getMonth(Century), szMesg, MAX_MESG)) {
           P.setTextEffect(0, PA_SCROLL_LEFT, PA_SCROLL_LEFT);
           P.displayReset(0);
+          if (DEBUG) { Serial.print(F("0:")); Serial.println(szMesg); }
           delay(100);  // small pause to prevent constant reset flicker
         } else {
           display++;
@@ -170,14 +174,15 @@ void loop(void) {
         display++;
         dtostrf(Clock.getTemperature(), 3, 1, szMesg);
         strcat(szMesg, "$");
+        if (DEBUG) { Serial.print(F("1:")); Serial.println(szMesg); }
         break;
 
       case 2:  // Temperature deg F
         // P.setTextEffect(0, PA_SCROLL_UP, PA_SCROLL_LEFT);
-        // // P.setTextEffect(0, PA_OPENING, PA_GROW_DOWN);
         display++;
         // dtostrf((1.8 * Clock.getTemperature()) + 32, 3, 1, szMesg);
         // strcat(szMesg, "&");
+        if (DEBUG) { Serial.println(F("2:skip")); }
         break;
 
       case 3:  // day of week
@@ -185,12 +190,14 @@ void loop(void) {
         P.setTextEffect(0, PA_SCROLL_RIGHT, PA_SCROLL_RIGHT);
         display++;
         dow2str((Clock.getDoW() + 6) % 7, szMesg, MAX_MESG);  // Map Sunday (0) to 6, Monday (1) to 0, etc.
+        if (DEBUG) { Serial.print(F("3:")); Serial.println(szMesg); }
         break;
 
       case 4:  // Calendar
         P.setTextEffect(0, PA_SCROLL_RIGHT, PA_SCROLL_RIGHT);
         display++;
         getDate(szMesg);
+        if (DEBUG) { Serial.print(F("4:")); Serial.println(szMesg); }
         break;
 
       case 5:  // Clock
@@ -204,6 +211,7 @@ void loop(void) {
         if (millis() - lastTime >= 1000) {
           lastTime = millis();
           getTime(szMesg, flasher);
+          if (DEBUG) { Serial.print(F("5:")); Serial.println(szMesg); }
           flasher = !flasher;
         }
         if (m % 10 == 0) {

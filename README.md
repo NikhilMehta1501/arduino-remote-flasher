@@ -1,58 +1,75 @@
-# Arduino Nano Clock
+# Arduino Remote Flasher
 
-A custom clock built from scratch using an Arduino Nano, a Max7219 dot matrix display, and an RTC DS3231 real-time clock module, with a custom-designed PCB. This project is based on the [Arduino Matrix Clock](https://www.instructables.com/Arduino-Matrix-Clock-1/) Instructables post.
+Lightweight web-based Arduino flasher for Raspberry Pi (or any Linux host). Flash and monitor an Arduino over the network from your phone or laptop—no SSH required.
 
-**Disclaimer:** This is an experimental project and may have flaws or bugs.
+**Repository:** [github.com/NikhilMehta1501/arduino-remote-flasher](https://github.com/NikhilMehta1501/arduino-remote-flasher)
 
-## Overview
+## Features
 
-It's a standalone desk clock that shows time (24-hour, 7-segment style with blinking colon), date, day of week, and temperature from the DS3231 on a 4-module Max7219 LED matrix. The firmware cycles through these views and can put the display to sleep at night. Everything's wired up on a custom PCB to keep things tidy between the Nano, display, and RTC. Had a lot of fun building this.
+- **Flash built-in sketches** or **upload your own** (.ino or .zip) and flash to the connected board
+- **Serial monitor** in the browser (live stream, no reset on connect)
+- **Reset** Arduino to bootloader from the UI
+- **Docker-based** – one image, no host install of arduino-cli beyond Docker
+- **No authentication** – intended for trusted networks only
 
-## Components
+## Prerequisites
 
-- **Arduino Nano** – Main microcontroller (ATmega328P)
-- **Max7219 dot matrix display** – 4 modules in a row, FC16 hardware type; driven via SPI (CLK 13, DATA 11, CS 10)
-- **RTC DS3231** – Real-time clock module (I2C); provides time, date, and temperature
-- **Custom PCB** – Designed for this project to connect the Nano, display, and RTC
+- Docker on the host (e.g. Raspberry Pi)
+- Arduino connected via USB (typically `/dev/ttyUSB0` or `/dev/ttyACM0` on Linux)
+- Optional: set host timezone (e.g. `TZ=Asia/Kolkata`) so compile-time RTC sketches get the right time
 
-## PCB
+## Quick start
 
-Everything's on a custom PCB so the Nano, display, and RTC are wired up cleanly.
+**Build** (from repo root):
+
+```bash
+docker build -t arduino-remote-flasher ./webapp
+```
+
+**Run:**
+
+```bash
+docker run -d --name arduino-webapp -p 5000:5000 --device /dev/ttyUSB0 \
+  -v "$(pwd)":/workspace -v arduino15:/app/.arduino15 \
+  -e HOME=/app \
+  arduino-remote-flasher
+```
+
+Use `--device /dev/ttyACM0` if your board appears as ttyACM0. Open `http://<host-ip>:5000` in a browser.
+
+**Restart script:** `./restart_webapp.sh` stops, rebuilds, and runs the container (edit the script to change port or device).
+
+## Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ARDUINO_PORT` | auto-detect | Serial port (e.g. `/dev/ttyUSB0`) |
+| `ARDUINO_FQBN` | `arduino:avr:nano:cpu=atmega328old` | Board FQBN for compile/upload |
+| `TZ` | (none) | Timezone for compile time (e.g. `Asia/Kolkata`) |
+| `SERIAL_BAUD` | `9600` | Baud rate for serial monitor |
+| `WORKSPACE` | `/workspace` | Path to mounted project (used for built-in sketches and scripts) |
+
+## Included example: Arduino Nano matrix clock
+
+This repo includes firmware and PCB for a **desk clock** (Arduino Nano + Max7219 matrix + DS3231 RTC) as an example. The web app can flash the built-in sketches **SetTimeUseMe** (set RTC from compile time) and **Matrix_Clock** (main clock), or you can flash your own sketches.
+
+- **Firmware:** `firmware/Matrix_Clock`, `firmware/SetTimeUseMe` – see [firmware/README.md](firmware/README.md)
+- **Scripts:** `flash_arduino.sh` (full flash workflow), `reset_arduino.sh` (bootloader reset)
+- **PCB:** `pcb/` – custom board for the clock (see [PCB](#pcb) below); Gerber included, note known trace flaw
+
+Based on the [Arduino Matrix Clock](https://www.instructables.com/Arduino-Matrix-Clock-1/) Instructables post.
+
+### PCB
+
+Custom PCB for the Nano + display + RTC. Gerber: [pcb/Gerber_arduino_nano_clock_PCB_arduino_nano_clock_3_2025-10-06.zip](pcb/Gerber_arduino_nano_clock_PCB_arduino_nano_clock_3_2025-10-06.zip). There is a known trace flaw; check before building.
 
 ![Circuit diagram](circuit%20diagram.png)
 ![Component wiring and layout](component%20wireing%20and%20layout.png)
 
-**Note:** The PCB design has a flaw, an incorrect path/trace that only showed up after soldering and testing. That was pretty disappointing. The Gerber file is here for reference, but be aware of this if you're building one.
+## Documentation
 
-- Gerber export: [pcb/Gerber_arduino_nano_clock_PCB_arduino_nano_clock_3_2025-10-06.zip](pcb/Gerber_arduino_nano_clock_PCB_arduino_nano_clock_3_2025-10-06.zip)  
-- PCB design source files (e.g. KiCad) to be added.
+- [Architecture and file reference](docs/README.md) – how the web app and scripts work, per-file overview.
 
-## Firmware
+## License
 
-The main sketch (`firmware/Matrix_Clock`) reads time, date, and temperature from the DS3231 over I2C and drives the 4-module Max7219 display via SPI. It rotates through: optional special-date messages, temperature in Celsius, day of week, full date, and the main clock (7-segment digits with blinking colon). The display can shut down between midnight and 6:00. There's a custom 7-segment font in `Font_Data.h`.
-
-**Libraries:** MD_Parola, MD_MAX72xx, DS3231, Wire, SPI (all available via Arduino Library Manager).
-
-The optional `firmware/SetTimeUseMe` sketch sets the RTC from the compile-time date/time (uses Time and DS1307RTC). The main clock uses a **DS3231**; if you're DS3231-only, you might need a small set-time sketch or another way to set the clock initially.
-
-## How to Build
-
-1. **Libraries** (Arduino IDE: Sketch → Include Library → Manage Libraries):  
-   - Matrix_Clock: **MD_Parola**, **MD_MAX72XX**, **DS3231**  
-   - SetTimeUseMe (optional): **Time**, **DS1307RTC**
-
-2. **Board:** Tools → Board → Arduino AVR Boards → **Arduino Nano**. For typical clones, use **Processor: ATmega328P (Old Bootloader)**.
-
-3. **Upload:** Open `firmware/Matrix_Clock/Matrix_Clock.ino` in the Arduino IDE and upload. For the full workflow (SetTimeUseMe then Matrix_Clock), run from the repo root:  
-   `./flash_arduino.sh`  
-   (Needs `arduino-cli` and, for serial monitoring, `screen`. See the script for details.)
-
-## What I Learned
-
-Overall this was a lot of fun. A few takeaways:
-
-- Embedded C on AVR: structuring a sketch for real-time display updates and multiple display modes.
-- I2C and SPI: interfacing the DS3231 (I2C) and Max7219 display (SPI), and using library abstractions (MD_Parola, DS3231).
-- PCB design and Gerber export: taking a design to manufacture; importance of design review before ordering.
-- Real-time clock and dot-matrix display programming: RTC registers, date/time formatting, and scrolling/text effects on the matrix.
-- Soldering: through-the-hole assembly and debugging after discovering the PCB trace error. That part was a bit of a pain, but learned a lot from it.
+This project is open source under the [MIT License](LICENSE).

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arduino Remote Flasher</title>
+  <style>
+    body { font-family: system-ui, "Segoe UI", sans-serif; max-width: 680px; margin: 0 auto; padding: 1.5rem; background: #1a1a1a; color: #e0e0e0; min-height: 100vh; line-height: 1.5; }
+    .header { margin-bottom: 1.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem 0; letter-spacing: -0.02em; }
+    .subtitle { color: #999; font-size: 0.9375rem; margin: 0; }
+    .status { margin: 0 0 0.75rem 0; color: #999; font-size: 0.875rem; min-height: 1.25rem; }
+    .card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .card h2 { font-size: 0.8125rem; font-weight: 600; color: #aaa; margin: 0 0 0.75rem 0; text-transform: uppercase; letter-spacing: 0.04em; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    button { padding: 0.5rem 1rem; min-height: 2.5rem; cursor: pointer; background: #333; color: #e0e0e0; border: 1px solid #555; border-radius: 6px; font-size: 0.875rem; font-family: inherit; }
+    button:hover:not(:disabled) { background: #444; }
+    button:focus { outline: 2px solid #6a9; outline-offset: 2px; }
+    button:disabled { cursor: not-allowed; opacity: 0.6; }
+    #flashBuiltin { background: #2d5a2d; border-color: #3d7a3d; }
+    #flashBuiltin:hover:not(:disabled) { background: #3d6a3d; }
+    select { background: #333; color: #e0e0e0; border: 1px solid #555; border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.875rem; min-height: 2.5rem; }
+    select:focus { outline: 2px solid #6a9; outline-offset: 2px; }
+    label { color: #999; font-size: 0.875rem; }
+    .log-wrap { max-height: calc(100vh - 280px); display: flex; flex-direction: column; }
+    .log-actions { margin-bottom: 0.5rem; }
+    #log { background: #0d0d0d; color: #d4d4d4; padding: 1rem; border-radius: 6px; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.8125rem; white-space: pre-wrap; word-break: break-all; overflow: auto; flex: 1; min-height: 140px; border: 1px solid #333; }
+    #log:empty::before { content: "Output will appear here."; color: #666; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Arduino Remote Flasher</h1>
+    <p class="subtitle">Flash and monitor Arduino from the browser</p>
+  </header>
+  <p class="status" id="status"></p>
+  <section class="card" aria-label="Actions">
+    <h2>Actions</h2>
+  <div class="actions">
+    <button type="button" id="reset">Reset Arduino</button>
+    <label for="flashTarget">Flash:</label>
+    <select id="flashTarget">
+      <option value="SetTimeUseMe">Built-in: SetTimeUseMe</option>
+      <option value="Matrix_Clock">Built-in: Matrix_Clock</option>
+      <option value="upload">Upload file...</option>
+    </select>
+    <span id="builtinFlashRow">
+      <button type="button" id="flashBuiltin">Flash</button>
+    </span>
+    <span id="uploadFlashRow" style="display: none;">
+      <input type="file" id="file" accept=".ino,.zip" style="max-width: 12rem;">
+      <button type="button" id="uploadFlash">Upload and flash</button>
+    </span>
+    <button type="button" id="serialStart">Serial monitor</button>
+    <button type="button" id="serialStop" style="display: none;">Stop monitor</button>
+  </div>
+  </section>
+  <section class="card" aria-label="Output">
+    <h2>Output</h2>
+  <div class="log-wrap">
+    <div class="log-actions">
+      <button type="button" id="copyLog">Copy log</button>
+    </div>
+    <pre id="log"></pre>
+  </div>
+  </section>
+
+  <script>
+    var logEl = document.getElementById("log");
+    var statusEl = document.getElementById("status");
+    var resetBtn = document.getElementById("reset");
+    var flashTargetSelect = document.getElementById("flashTarget");
+    var builtinFlashRow = document.getElementById("builtinFlashRow");
+    var uploadFlashRow = document.getElementById("uploadFlashRow");
+    var flashBuiltinBtn = document.getElementById("flashBuiltin");
+    var fileInput = document.getElementById("file");
+    var uploadFlashBtn = document.getElementById("uploadFlash");
+    var serialStartBtn = document.getElementById("serialStart");
+    var serialStopBtn = document.getElementById("serialStop");
+    var serialEventSource = null;
+
+    function updateFlashUI() {
+      var isUpload = flashTargetSelect.value === "upload";
+      builtinFlashRow.style.display = isUpload ? "none" : "";
+      uploadFlashRow.style.display = isUpload ? "" : "none";
+    }
+    flashTargetSelect.addEventListener("change", updateFlashUI);
+    updateFlashUI();
+
+    function setBusy(busy) {
+      resetBtn.disabled = busy;
+      flashTargetSelect.disabled = busy;
+      flashBuiltinBtn.disabled = busy;
+      uploadFlashBtn.disabled = busy;
+      fileInput.disabled = busy;
+      serialStartBtn.disabled = busy;
+      statusEl.textContent = busy ? "Running..." : "";
+    }
+
+    function setSerialActive(active) {
+      resetBtn.disabled = active;
+      flashTargetSelect.disabled = active;
+      flashBuiltinBtn.disabled = active;
+      uploadFlashBtn.disabled = active;
+      fileInput.disabled = active;
+      serialStartBtn.disabled = active;
+      serialStartBtn.style.display = active ? "none" : "";
+      serialStopBtn.style.display = active ? "" : "none";
+      serialStopBtn.disabled = false;
+      statusEl.textContent = active ? "Serial monitor active" : "";
+    }
+
+    function run(action) {
+      setBusy(true);
+      logEl.textContent = action === "reset" ? "Running...\n" : "Flash can take a long time (1–2 minutes or more). Please wait.\n\nRunning...\n";
+      var url = action === "reset" ? "/run/reset" : "/run/flash";
+      var body = new FormData();
+      fetch(url, { method: "POST", body: body })
+        .then(function (r) {
+          return r.text().then(function (text) {
+            return { status: r.status, text: text };
+          });
+        })
+        .then(function (o) {
+          if (o.status === 409) {
+            logEl.textContent = o.text;
+          } else {
+            logEl.textContent = o.text || "(no output)";
+          }
+        })
+        .catch(function (err) {
+          logEl.textContent = "Error: " + err.message;
+        })
+        .finally(function () {
+          setBusy(false);
+        });
+    }
+
+    function runFlashBuiltin() {
+      var sketch = flashTargetSelect.value;
+      if (sketch === "upload") return;
+      setBusy(true);
+      logEl.textContent = "Flash can take a long time (1–2 minutes or more). Please wait.\n\nRunning...\n";
+      var form = new FormData();
+      form.append("sketch", sketch);
+      fetch("/run/flash-builtin", { method: "POST", body: form })
+        .then(function (r) {
+          return r.text().then(function (text) {
+            return { status: r.status, text: text };
+          });
+        })
+        .then(function (o) {
+          if (o.status === 409) {
+            logEl.textContent = o.text;
+          } else {
+            logEl.textContent = o.text || "(no output)";
+          }
+        })
+        .catch(function (err) {
+          logEl.textContent = "Error: " + err.message;
+        })
+        .finally(function () {
+          setBusy(false);
+        });
+    }
+
+    function runUploadFlash() {
+      if (!fileInput.files || fileInput.files.length === 0) {
+        logEl.textContent = "Please select a .ino or .zip file.";
+        return;
+      }
+      setBusy(true);
+      logEl.textContent = "Flash can take a long time (1–2 minutes or more). Please wait.\n\nRunning...\n";
+      var form = new FormData();
+      form.append("file", fileInput.files[0]);
+      fetch("/run/flash-upload", { method: "POST", body: form })
+        .then(function (r) {
+          return r.text().then(function (text) {
+            return { status: r.status, text: text };
+          });
+        })
+        .then(function (o) {
+          if (o.status === 409) {
+            logEl.textContent = o.text;
+          } else {
+            logEl.textContent = o.text || "(no output)";
+          }
+        })
+        .catch(function (err) {
+          logEl.textContent = "Error: " + err.message;
+        })
+        .finally(function () {
+          setBusy(false);
+        });
+    }
+
+    function startSerialMonitor() {
+      setSerialActive(true);
+      logEl.textContent = "Serial monitor started. Reading from Arduino...\n\n";
+      serialEventSource = new EventSource("/run/serial-stream");
+      serialEventSource.onmessage = function (e) {
+        logEl.textContent += e.data + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+      serialEventSource.onerror = function () {
+        serialEventSource.close();
+        serialEventSource = null;
+        setSerialActive(false);
+        logEl.textContent += "\n[Monitor stopped or connection lost]";
+      };
+    }
+
+    function stopSerialMonitor() {
+      if (serialEventSource) {
+        serialEventSource.close();
+        serialEventSource = null;
+      }
+      fetch("/run/serial-stop", { method: "POST" });
+      setSerialActive(false);
+      logEl.textContent += "\n[Monitor stopped]";
+    }
+
+    function copyLog() {
+      var text = logEl.textContent || "";
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(function () {
+        var btn = document.getElementById("copyLog");
+        var orig = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = orig; }, 1500);
+      });
+    }
+
+    resetBtn.addEventListener("click", function () { run("reset"); });
+    flashBuiltinBtn.addEventListener("click", runFlashBuiltin);
+    uploadFlashBtn.addEventListener("click", runUploadFlash);
+    serialStartBtn.addEventListener("click", startSerialMonitor);
+    serialStopBtn.addEventListener("click", stopSerialMonitor);
+    document.getElementById("copyLog").addEventListener("click", copyLog);
+  </script>
+</body>
+</html>

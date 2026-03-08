@@ -83,7 +83,7 @@ bool getTime(const char *str) {
   int Hour, Min, Sec;
   if (sscanf(str, "%d:%d:%d", &Hour, &Min, &Sec) != 3) return false;
   tm.Hour = Hour;
-  tm.Minute = (Min + 5) % 60;
+  tm.Minute = Min;
   tm.Second = Sec;
   return true;
 }
