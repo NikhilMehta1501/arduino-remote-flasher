@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  webapp:
+    image: arduino-remote-flasher
+    build:
+      context: ./webapp
+    container_name: arduino-webapp
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      # Adjust timezone as needed
+      TZ: Asia/Kolkata
+      HOME: /app
+      # Optional: override detected port or board
+      # ARDUINO_PORT: /dev/ttyUSB0
+      # ARDUINO_FQBN: arduino:avr:nano:cpu=atmega328old
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+    volumes:
+      - "./:/workspace"
+      - "arduino15:/app/.arduino15"
+
+volumes:
+  arduino15:
+
